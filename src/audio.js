@@ -268,9 +268,15 @@ export function applyGate(settings) {
  * the device's actual mix format.
  */
 export async function probeOutputRate(deviceId) {
+  // Without constructor sinkId support there is no way to target a specific
+  // device, and opening a default context would report the DEFAULT output's
+  // rate as though it were the cable's — a check that silently passes while
+  // measuring the wrong device is worse than no check, so say "unknown".
+  if (!NATIVE_SINK || !deviceId) return null;
+
   let ctx = null;
   try {
-    ctx = NATIVE_SINK && deviceId ? new AudioContext({ sinkId: deviceId }) : new AudioContext();
+    ctx = new AudioContext({ sinkId: deviceId });
     return ctx.sampleRate;
   } catch {
     return null;

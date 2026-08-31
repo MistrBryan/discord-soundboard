@@ -9,7 +9,7 @@
 //
 // All audio work happens in the renderer, where Web Audio lives.
 
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, session, shell, Tray } from "electron";
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, safeStorage, session, shell, Tray } from "electron";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import fs from "node:fs/promises";
@@ -106,17 +106,62 @@ async function ensureDirs() {
 // password for your Discord application, and the clip library gets copied,
 // backed up, and hand-edited; those two things should not share a file.
 
-async function loadCredentials() {
+// The secret and token are encrypted at rest with the OS keystore — DPAPI on
+// Windows — so the file is useless if it is copied off the machine or ends up
+// in a backup or a screen share. The client ID is deliberately left readable:
+// it is public information and keeping it legible makes the file diagnosable.
+const SECRET_FIELDS = ["clientSecret", "accessToken"];
+
+function canEncrypt() {
   try {
-    return JSON.parse((await fs.readFile(credentialsPath, "utf8")).replace(/^﻿/, ""));
+    return safeStorage.isEncryptionAvailable();
   } catch {
-    return { clientId: "", clientSecret: "", accessToken: "" };
+    return false;
   }
 }
 
+async function loadCredentials() {
+  let stored;
+  try {
+    stored = JSON.parse((await fs.readFile(credentialsPath, "utf8")).replace(/^﻿/, ""));
+  } catch {
+    return { clientId: "", clientSecret: "", accessToken: "" };
+  }
+
+  const out = { clientId: stored.clientId ?? "", clientSecret: "", accessToken: "" };
+  for (const field of SECRET_FIELDS) {
+    const value = stored[field];
+    if (!value) continue;
+    if (stored.encrypted) {
+      try {
+        out[field] = safeStorage.decryptString(Buffer.from(value, "base64"));
+      } catch {
+        // Encrypted on another machine or another Windows account. Unusable
+        // rather than corrupt — drop it and let the user re-enter.
+        console.warn(`[soundboard] could not decrypt ${field}; it will need re-entering`);
+      }
+    } else {
+      out[field] = value; // legacy plaintext, re-encrypted on the next save
+    }
+  }
+  return out;
+}
+
 async function saveCredentials(credentials) {
+  const encrypt = canEncrypt();
+  const payload = { clientId: credentials.clientId ?? "", encrypted: encrypt };
+
+  for (const field of SECRET_FIELDS) {
+    const value = credentials[field] ?? "";
+    if (!value) {
+      payload[field] = "";
+      continue;
+    }
+    payload[field] = encrypt ? safeStorage.encryptString(value).toString("base64") : value;
+  }
+
   const tmp = `${credentialsPath}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(credentials, null, 2), "utf8");
+  await fs.writeFile(tmp, JSON.stringify(payload, null, 2), "utf8");
   await fs.rename(tmp, credentialsPath);
   // Best effort on Windows; the file still sits inside the user's own profile.
   await fs.chmod(credentialsPath, 0o600).catch(() => {});
@@ -204,6 +249,25 @@ function applyHotkeys(bindings, stopAllAccelerator) {
   register(stopAllAccelerator, () => win?.webContents.send("hotkey:stop-all"));
 
   return failed;
+}
+
+// The app only ever needs to open two sites. An allowlist rather than a
+// "starts with https://" check, so that a compromised or buggy renderer cannot
+// turn this into a way to launch arbitrary URLs on the user's machine.
+const ALLOWED_EXTERNAL_HOSTS = new Set(["vb-audio.com", "www.vb-audio.com", "discord.com", "github.com"]);
+
+function openExternalUrl(url) {
+  let parsed;
+  try {
+    parsed = new URL(String(url));
+  } catch {
+    return;
+  }
+  if (parsed.protocol !== "https:" || !ALLOWED_EXTERNAL_HOSTS.has(parsed.hostname)) {
+    console.warn(`[soundboard] refused to open ${parsed.protocol}//${parsed.hostname}`);
+    return;
+  }
+  return shell.openExternal(parsed.toString());
 }
 
 // --- updates ----------------------------------------------------------------
@@ -341,6 +405,24 @@ function createWindow() {
 
   win.setMenuBarVisibility(false);
   win.loadFile(path.join(HERE, "index.html"));
+
+  // The preload hands the page `window.api`, which can read and write files and
+  // register global shortcuts. That is safe only while the page is OUR page.
+  // Nothing here navigates, but the content security policy does not restrict
+  // top-level navigation, so without these two guards a single injected link
+  // could move the window to a remote origin that then inherits the whole IPC
+  // surface. Deny both, and send anything genuinely external to the real browser.
+  win.webContents.on("will-navigate", (event, url) => {
+    if (url !== win.webContents.getURL()) {
+      event.preventDefault();
+      openExternalUrl(url);
+    }
+  });
+
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    openExternalUrl(url);
+    return { action: "deny" };
+  });
 
   // The whole point of running in the tray: the renderer keeps holding the mic
   // and feeding the cable, so Discord's input can stay on CABLE Output forever
@@ -641,9 +723,4 @@ ipcMain.handle("shell:open-sound-settings", async () => {
   }
 });
 
-ipcMain.handle("shell:open-external", (_e, url) => {
-  // Only ever used for the VB-CABLE download page. Refuse anything that is not
-  // a plain https link so a bad clip name can never turn into a launched process.
-  if (typeof url !== "string" || !url.startsWith("https://")) return;
-  return shell.openExternal(url);
-});
+ipcMain.handle("shell:open-external", (_e, url) => openExternalUrl(url));

@@ -59,6 +59,12 @@ const COLOUR = new RegExp(
 const MAX_VALUE_LENGTH = 64;
 const MAX_NAME_LENGTH = 40;
 
+/** Shared with anywhere else a colour arrives from a file rather than from code. */
+export function isSafeColour(value) {
+  const text = String(value ?? "").trim();
+  return text.length <= MAX_VALUE_LENGTH && COLOUR.test(text);
+}
+
 /**
  * @returns {{ ok: true, theme: {name, base, colors} } | { ok: false, errors: string[] }}
  */

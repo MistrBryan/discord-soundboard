@@ -8,7 +8,7 @@ import { listDevices, findCable, suggestDefaults, checkRouting } from "./setup.j
 import { createWizard } from "./wizard.js";
 import { accelFromEvent, formatAccelerator } from "./hotkeys.js";
 import { createTrimEditor } from "./waveform.js";
-import { validateTheme, applyCustomTheme, exportCurrentTheme } from "./theme.js";
+import { validateTheme, applyCustomTheme, exportCurrentTheme, isSafeColour } from "./theme.js";
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -182,16 +182,29 @@ function resolveDevice(list, savedId, savedLabel) {
   );
 }
 
+// Built as DOM nodes, not interpolated markup. Device labels are supplied by
+// the operating system from hardware descriptors — a device is free to call
+// itself anything at all, including markup — and this app is about to be handed
+// to other people. The content security policy would stop such a label from
+// executing, but it should never reach the parser in the first place.
 function fillSelect(select, list, selectedId) {
-  select.innerHTML = list
-    .map(
-      (device) =>
-        `<option value="${device.deviceId}"${device.deviceId === selectedId ? " selected" : ""}>${
-          device.label || "(unnamed device)"
-        }</option>`
-    )
-    .join("");
-  if (list.length === 0) select.innerHTML = `<option value="">No devices found</option>`;
+  select.replaceChildren();
+
+  if (list.length === 0) {
+    const empty = document.createElement("option");
+    empty.value = "";
+    empty.textContent = "No devices found";
+    select.append(empty);
+    return;
+  }
+
+  for (const device of list) {
+    const option = document.createElement("option");
+    option.value = device.deviceId;
+    option.textContent = device.label || "(unnamed device)";
+    option.selected = device.deviceId === selectedId;
+    select.append(option);
+  }
 }
 
 // --- devices ----------------------------------------------------------------
@@ -413,7 +426,10 @@ function padFor(clip) {
   const pad = document.createElement("div");
   pad.className = "pad";
   pad.dataset.id = clip.id;
-  pad.style.setProperty("--accent", clip.color);
+  // library.json is hand-editable and boards get shared. Custom properties
+  // accept nearly any token sequence, so a colour is validated the same way an
+  // imported theme value is before it reaches the CSSOM.
+  if (isSafeColour(clip.color)) pad.style.setProperty("--accent", clip.color);
 
   const conflicted = clip.hotkey && conflicts.has(clip.hotkey);
   // The hotkey is its own button, a sibling of the pad rather than a child —
@@ -1001,5 +1017,14 @@ async function boot() {
 
 boot().catch((err) => {
   console.error(err);
-  document.body.innerHTML = `<div class="setup"><h1>Failed to start</h1><p>${err.message}</p></div>`;
+  // Error text can carry device names and file paths, so it is set as text
+  // rather than parsed as markup.
+  const panel = document.createElement("div");
+  panel.className = "setup";
+  const heading = document.createElement("h1");
+  heading.textContent = "Failed to start";
+  const detail = document.createElement("p");
+  detail.textContent = err.message;
+  panel.append(heading, detail);
+  document.body.replaceChildren(panel);
 });

@@ -147,10 +147,18 @@ function buildSteps(deps) {
         const wrong = [];
         if (outRate && Math.abs(outRate - audio.SAMPLE_RATE) > 1) wrong.push(`CABLE Input is ${outRate} Hz`);
         if (inRate && Math.abs(inRate - audio.SAMPLE_RATE) > 1) wrong.push(`CABLE Output is ${inRate} Hz`);
+        if (wrong.length) {
+          return { ok: false, detail: `${wrong.join(", ")} — clips will play back pitch-shifted.` };
+        }
 
-        return wrong.length
-          ? { ok: false, detail: `${wrong.join(", ")} — clips will play back pitch-shifted.` }
-          : { ok: true, detail: "Both halves at 48000 Hz." };
+        // A rate of null means the probe could not target that device. Reporting
+        // a pass there would be claiming a check that never ran.
+        const unknown = [outRate ? null : "CABLE Input", inRate ? null : "CABLE Output"].filter(Boolean);
+        if (unknown.length) {
+          return { ok: false, detail: `Couldn't read the sample rate of ${unknown.join(" or ")} — set it by hand.` };
+        }
+
+        return { ok: true, detail: "Both halves at 48000 Hz." };
       },
     },
 
