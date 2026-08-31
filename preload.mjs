@@ -34,6 +34,11 @@ contextBridge.exposeInMainWorld("api", {
   rpcClipEnded: () => ipcRenderer.invoke("rpc:clip-ended"),
   onRpcState: (fn) => ipcRenderer.on("rpc:state", (_e, state) => fn(state)),
 
+  updateGetState: () => ipcRenderer.invoke("update:get-state"),
+  updateCheck: () => ipcRenderer.invoke("update:check"),
+  updateInstall: () => ipcRenderer.invoke("update:install"),
+  onUpdateState: (fn) => ipcRenderer.on("update:state", (_e, state) => fn(state)),
+
   onHotkeyFire: (fn) => ipcRenderer.on("hotkey:fire", (_e, id) => fn(id)),
   onHotkeyStopAll: (fn) => ipcRenderer.on("hotkey:stop-all", () => fn()),
   onTrayToggleMic: (fn) => ipcRenderer.on("tray:toggle-mic", () => fn()),

@@ -757,3 +757,14 @@ dialog::backdrop {
   gap: 10px;
   justify-content: flex-end;
 }
+
+/* An update is good news, so it gets the accent colour rather than the amber
+   used for things that are actually wrong. */
+.banner.update {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.banner.update .banner-body strong {
+  color: var(--accent);
+}

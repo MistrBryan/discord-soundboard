@@ -14,7 +14,10 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import fs from "node:fs/promises";
 import crypto from "node:crypto";
+import electronUpdater from "electron-updater";
 import { RpcVoice } from "./src/rpc-voice.mjs";
+
+const { autoUpdater } = electronUpdater;
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -23,9 +26,9 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 // folder and lose the existing board. Pin it instead. Must run before ready.
 app.setPath("userData", path.join(app.getPath("appData"), "discord-soundboard"));
 
-// Chromium decodes all of these natively, so the app needs no ffmpeg and no
-// runtime dependencies at all. Anything outside this list is rejected at import
-// with a message naming what is supported.
+// Chromium decodes all of these natively, so the app needs no ffmpeg. Anything
+// outside this list is rejected at import with a message naming what is
+// supported. (electron-updater is the app's only runtime dependency.)
 const AUDIO_EXTENSIONS = [".mp3", ".wav", ".ogg", ".oga", ".flac", ".m4a", ".aac", ".opus", ".webm"];
 
 // Device ids are salted per origin and can be reissued between launches, so
@@ -200,6 +203,51 @@ function applyHotkeys(bindings, stopAllAccelerator) {
   return failed;
 }
 
+// --- updates ----------------------------------------------------------------
+//
+// Checks GitHub Releases, downloads in the background, and installs on quit.
+// Nothing is ever installed underneath a live call: the app sits in the tray
+// holding your microphone, so a surprise restart would cut your voice mid-
+// sentence. The user is told an update is ready and chooses when to restart.
+
+let updateState = { status: "idle" };
+
+function reportUpdate(next) {
+  updateState = next;
+  win?.webContents.send("update:state", updateState);
+}
+
+function setupUpdates() {
+  // In development there is no packaged app to replace, and electron-updater
+  // throws rather than no-opping.
+  if (!app.isPackaged) return;
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on("checking-for-update", () => reportUpdate({ status: "checking" }));
+  autoUpdater.on("update-not-available", () => reportUpdate({ status: "idle" }));
+  autoUpdater.on("update-available", (info) => reportUpdate({ status: "downloading", version: info.version }));
+  autoUpdater.on("download-progress", (p) =>
+    reportUpdate({ status: "downloading", percent: Math.round(p.percent) })
+  );
+  autoUpdater.on("update-downloaded", (info) => {
+    reportUpdate({ status: "ready", version: info.version });
+    refreshTray();
+  });
+  autoUpdater.on("error", (err) => {
+    // A failed update check must never be fatal, and must never nag: the app's
+    // job is playing sounds.
+    console.error("[updater]", err?.message ?? err);
+    reportUpdate({ status: "error", error: String(err?.message ?? err) });
+  });
+
+  autoUpdater.checkForUpdates().catch(() => {});
+  // A tray app can stay open for days, so re-check periodically rather than
+  // only at launch.
+  setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 60 * 60 * 1000);
+}
+
 // --- tray and autostart -----------------------------------------------------
 
 function showWindow() {
@@ -234,6 +282,9 @@ function refreshTray() {
       { label: live ? "Microphone: live" : "Microphone: off", enabled: false },
       { type: "separator" },
       { label: "Show soundboard", click: showWindow },
+      ...(updateState.status === "ready"
+        ? [{ label: `Restart to update to ${updateState.version}`, click: () => installUpdateNow() }]
+        : []),
       { label: "Mute microphone", type: "checkbox", checked: !micState.micLive, click: () => win?.webContents.send("tray:toggle-mic") },
       { label: "Stop all sounds", click: () => win?.webContents.send("hotkey:stop-all") },
       { type: "separator" },
@@ -365,6 +416,7 @@ app.whenReady().then(async () => {
 
   createWindow();
   createTray();
+  setupUpdates();
 
   app.on("activate", showWindow);
 });
@@ -484,6 +536,25 @@ ipcMain.handle("rpc:set-hangover", (_e, ms) => {
 // switch has finished before any audio starts.
 ipcMain.handle("rpc:clip-starting", () => rpc.clipStarting());
 ipcMain.handle("rpc:clip-ended", () => rpc.clipEnded());
+
+// Quitting is what applies the update, so the close-to-tray guard has to be
+// lifted first or the app would merely hide and never install.
+function installUpdateNow() {
+  quitting = true;
+  autoUpdater.quitAndInstall();
+}
+
+ipcMain.handle("update:get-state", () => updateState);
+ipcMain.handle("update:install", () => installUpdateNow());
+ipcMain.handle("update:check", async () => {
+  if (!app.isPackaged) return { status: "idle", detail: "updates only run in a packaged build" };
+  try {
+    await autoUpdater.checkForUpdates();
+  } catch (err) {
+    reportUpdate({ status: "error", error: String(err?.message ?? err) });
+  }
+  return updateState;
+});
 
 ipcMain.handle("app:report-state", (_e, state) => {
   micState = state;

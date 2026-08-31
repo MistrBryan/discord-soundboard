@@ -146,6 +146,23 @@ async function refreshDevices() {
   await reconfigure();
 }
 
+// --- updates ----------------------------------------------------------------
+
+// Only "ready" is worth interrupting for, and even then it is an offer rather
+// than an action: the app holds your microphone, so restarting it mid-call would
+// cut your voice. Downloading happens quietly in the background.
+function renderUpdate(state) {
+  const banner = $("#update-banner");
+  if (state.status !== "ready") {
+    banner.hidden = true;
+    return;
+  }
+  $("#update-title").textContent = `Version ${state.version} is ready to install.`;
+  $("#update-detail").textContent =
+    "It installs when you restart. Nothing changes until then, so finish your call first — restarting cuts your microphone.";
+  banner.hidden = false;
+}
+
 // --- setup wizard -----------------------------------------------------------
 
 function showWizard() {
@@ -675,6 +692,7 @@ function wireToolbar() {
   $("#open-wizard").addEventListener("click", showWizard);
 
   $("#routing-fix").addEventListener("click", () => window.api.openSoundSettings());
+  $("#update-install").addEventListener("click", () => window.api.updateInstall());
 
   $("#rpc-enabled").addEventListener("change", async (event) => {
     rpcEnabled = event.target.checked;
@@ -820,6 +838,9 @@ async function boot() {
   wireToolbar();
   wireEditor();
   wireDragAndDrop();
+
+  window.api.onUpdateState(renderUpdate);
+  renderUpdate(await window.api.updateGetState());
 
   const rpcConfig = await window.api.rpcGetConfig();
   $("#rpc-client-id").value = rpcConfig.clientId;

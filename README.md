@@ -211,6 +211,37 @@ visible. It exists because that failure is silent — `#app` starts hidden in th
 startup path that forgets to reveal a screen yields a blank window with no error logged
 anywhere. Run it after every build.
 
+## Releasing
+
+Bump `version` in `package.json`, then:
+
+```bash
+npm run dist
+```
+
+```bash
+npm run smoke
+```
+
+```bash
+GH_TOKEN=$(gh auth token) npm run publish
+```
+
+That builds, verifies the UI renders, and uploads the installer plus
+`latest.yml` to a GitHub Release. Installed copies check that manifest on
+launch and every six hours, download in the background, and offer to install on
+restart — never mid-call, because restarting cuts the microphone.
+
+Two things that will bite if changed carelessly:
+
+- **The asset name must not contain spaces.** GitHub rewrites them on upload, and
+  the name in `latest.yml` has to match the uploaded asset exactly or the
+  updater 404s silently. `artifactName` pins it.
+- **The version must increase.** Clients compare against `latest.yml`; a release
+  at the same version is invisible to them.
+
+Updates are unsigned, so SmartScreen warns on the downloaded installer too.
+
 `npm run icons` regenerates the tray and window icons, which are drawn in code rather than
 committed as binaries.
 
