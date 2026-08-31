@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:;"
+    />
+    <title>Soundboard</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- Shown instead of everything else until VB-CABLE is detected. -->
+    <div id="setup" hidden></div>
+
+    <div id="app" hidden>
+      <header>
+        <div class="brand">
+          <span class="dot" id="status-dot"></span>
+          <h1>Soundboard</h1>
+        </div>
+        <div class="status" id="status-text">starting…</div>
+        <div class="header-actions">
+          <button id="open-wizard" class="ghost">Setup guide</button>
+          <button id="add-sounds" class="primary">Add sounds</button>
+          <button id="stop-all" class="danger">Stop all</button>
+        </div>
+      </header>
+
+      <section class="toolbar">
+        <label class="field">
+          <span>To Discord</span>
+          <select id="device-cable"></select>
+        </label>
+        <label class="field">
+          <span>Microphone</span>
+          <select id="device-mic"></select>
+        </label>
+        <label class="field">
+          <span>Monitor (your headphones)</span>
+          <select id="device-monitor"></select>
+        </label>
+        <label class="field narrow">
+          <span>Theme</span>
+          <select id="theme">
+            <option value="system">Match Windows</option>
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+          </select>
+        </label>
+        <label class="field narrow">
+          <span>Overlap</span>
+          <select id="overlap-mode">
+            <option value="layer">Layer</option>
+            <option value="restart">Restart same clip</option>
+            <option value="choke">Cut off others</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="toolbar">
+        <label class="field slider">
+          <span>Clip volume <b id="master-volume-value"></b></span>
+          <input id="master-volume" type="range" min="0" max="2" step="0.01" />
+        </label>
+        <label class="field slider">
+          <span>Monitor volume <b id="monitor-volume-value"></b></span>
+          <input id="monitor-volume" type="range" min="0" max="2" step="0.01" />
+        </label>
+        <label class="toggle">
+          <input id="monitor-enabled" type="checkbox" />
+          <span>Hear clips myself</span>
+        </label>
+        <label class="toggle">
+          <input id="mic-passthrough" type="checkbox" />
+          <span>Pass my mic through</span>
+        </label>
+        <label class="toggle">
+          <input id="start-at-login" type="checkbox" />
+          <span>Start with Windows</span>
+        </label>
+        <label class="field narrow">
+          <span>Stop-all hotkey</span>
+          <button id="stop-all-hotkey" class="hotkey" type="button"></button>
+        </label>
+      </section>
+
+      <section class="toolbar">
+        <label class="toggle">
+          <input id="gate-enabled" type="checkbox" />
+          <span>Mic noise gate</span>
+        </label>
+        <div class="field meter-field">
+          <span>Input <b id="gate-state"></b></span>
+          <div class="meter">
+            <div class="meter-fill" id="meter-fill"></div>
+            <div class="meter-threshold" id="meter-threshold"></div>
+          </div>
+        </div>
+        <label class="field slider">
+          <span>Threshold <b id="gate-threshold-value"></b></span>
+          <input id="gate-threshold" type="range" min="-90" max="-10" step="1" />
+        </label>
+        <div class="field narrow">
+          <span>&nbsp;</span>
+          <button id="gate-calibrate" class="ghost" type="button">Calibrate</button>
+        </div>
+        <label class="field slider">
+          <span>Release <b id="gate-release-value"></b></span>
+          <input id="gate-release" type="range" min="20" max="1000" step="10" />
+        </label>
+        <label class="field slider">
+          <span>Attack <b id="gate-attack-value"></b></span>
+          <input id="gate-attack" type="range" min="1" max="60" step="1" />
+        </label>
+        <label class="field slider">
+          <span>Hold <b id="gate-hold-value"></b></span>
+          <input id="gate-hold" type="range" min="0" max="600" step="10" />
+        </label>
+      </section>
+
+      <section class="toolbar">
+        <label class="toggle">
+          <input id="rpc-enabled" type="checkbox" />
+          <span>Auto-switch Discord</span>
+        </label>
+        <label class="field">
+          <span>Application client ID</span>
+          <input id="rpc-client-id" type="text" spellcheck="false" autocomplete="off" />
+        </label>
+        <label class="field">
+          <span>Client secret</span>
+          <input id="rpc-client-secret" type="password" spellcheck="false" autocomplete="off" />
+        </label>
+        <label class="field slider">
+          <span>Hold on cable after clip <b id="rpc-hangover-value"></b></span>
+          <input id="rpc-hangover" type="range" min="200" max="4000" step="100" />
+        </label>
+        <div class="field narrow">
+          <span>&nbsp;</span>
+          <button id="rpc-connect" class="ghost" type="button">Connect</button>
+        </div>
+        <div class="field rpc-status-field">
+          <span>Status</span>
+          <div id="rpc-status" class="rpc-status">off</div>
+        </div>
+      </section>
+
+      <div id="routing-warning" class="banner" hidden>
+        <div class="banner-body" id="routing-list"></div>
+        <button id="routing-fix" type="button">Open Sound settings</button>
+      </div>
+
+      <main id="board" class="board"></main>
+
+      <div id="drop-hint" class="drop-hint" hidden>Drop audio files to add them</div>
+      <div id="toast" class="toast" hidden></div>
+    </div>
+
+    <dialog id="editor">
+      <form method="dialog" class="editor-form">
+        <div class="editor-head">
+          <input id="editor-name" class="editor-name" type="text" maxlength="40" />
+          <button value="close" class="ghost" type="submit">Done</button>
+        </div>
+
+        <canvas id="editor-wave" class="wave"></canvas>
+        <div class="wave-legend">
+          <span id="editor-trim"></span>
+          <button id="editor-reset-trim" class="link" type="button">Reset trim</button>
+        </div>
+
+        <label class="field slider">
+          <span>This clip's volume <b id="editor-volume-value"></b></span>
+          <input id="editor-volume" type="range" min="0" max="2" step="0.01" />
+        </label>
+
+        <div class="editor-row">
+          <div class="field narrow">
+            <span>Hotkey</span>
+            <button id="editor-hotkey" class="hotkey" type="button"></button>
+          </div>
+          <button id="editor-clear-hotkey" class="link" type="button">Clear</button>
+          <div class="spacer"></div>
+          <button id="editor-preview" class="ghost" type="button">Preview (only you)</button>
+          <button id="editor-delete" class="danger" type="button">Delete clip</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script type="module" src="src/app.js"></script>
+  </body>
+</html>

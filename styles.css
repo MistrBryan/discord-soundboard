@@ -1,0 +1,759 @@
+:root {
+  color-scheme: dark;
+
+  --bg: #14161b;
+  --panel: #1b1e26;
+  --panel-2: #222633;
+  --line: #2c3140;
+  --line-hover: #3b4257;
+  --text: #e6e9f0;
+  --muted: #8b93a7;
+
+  --accent: #7aa2f7;
+  --on-accent: #10131a;
+  --danger: #e06c75;
+  --danger-line: #4a2f33;
+  --danger-bg: rgba(224, 108, 117, 0.12);
+  --danger-glow: rgba(224, 108, 117, 0.15);
+  --ok: #9ece6a;
+  --ok-glow: rgba(158, 206, 106, 0.15);
+  --ok-line: rgba(158, 206, 106, 0.4);
+  --warn: #f0b132;
+  --warn-bg: rgba(240, 177, 50, 0.09);
+  --warn-line: rgba(240, 177, 50, 0.28);
+
+  --meter-track: #4a5468;
+  --wave: #7aa2f7;
+  --wave-dim: #39414f;
+  --overlay: rgba(20, 22, 27, 0.88);
+  --backdrop: rgba(10, 11, 15, 0.65);
+  --shadow: rgba(0, 0, 0, 0.45);
+}
+
+/* Light palette. Only the tokens are redefined — no rule below this block needs
+   to know which theme is active. */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #eef1f6;
+  --panel: #ffffff;
+  --panel-2: #e7ebf2;
+  --line: #d3d9e4;
+  --line-hover: #b3bccd;
+  --text: #191c23;
+  --muted: #5c6478;
+
+  --accent: #3563cf;
+  --on-accent: #ffffff;
+  --danger: #c23934;
+  --danger-line: #e5b6b4;
+  --danger-bg: rgba(194, 57, 52, 0.1);
+  --danger-glow: rgba(194, 57, 52, 0.15);
+  --ok: #2f8a3f;
+  --ok-glow: rgba(47, 138, 63, 0.15);
+  --ok-line: rgba(47, 138, 63, 0.45);
+  --warn: #9a6410;
+  --warn-bg: rgba(240, 177, 50, 0.16);
+  --warn-line: rgba(154, 100, 16, 0.35);
+
+  --meter-track: #aab3c4;
+  --wave: #3563cf;
+  --wave-dim: #c2cad8;
+  --overlay: rgba(238, 241, 246, 0.9);
+  --backdrop: rgba(90, 98, 112, 0.4);
+  --shadow: rgba(31, 41, 61, 0.18);
+}
+
+
+* {
+  box-sizing: border-box;
+}
+
+/* The UA stylesheet's [hidden] rule loses to any `display` set by id or class,
+   so hiding has to win outright — several elements below set display. */
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 "Segoe UI", system-ui, sans-serif;
+  overflow: hidden;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* body hides its overflow so the board scrolls on its own; the setup screen
+   needs its own scroller or a short window would cut the checklist off. */
+#setup {
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* --- header --------------------------------------------------------------- */
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand h1 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-glow);
+}
+
+.dot.live {
+  background: var(--ok);
+  box-shadow: 0 0 0 3px var(--ok-glow);
+}
+
+.status {
+  flex: 1;
+  color: var(--muted);
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* --- controls ------------------------------------------------------------- */
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 7px 13px;
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--line-hover);
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+button.danger {
+  background: transparent;
+  border-color: var(--danger-line);
+  color: var(--danger);
+}
+
+button.danger:hover {
+  background: var(--danger-bg);
+}
+
+button.ghost {
+  background: transparent;
+}
+
+button.link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  padding: 0;
+  font-size: 12.5px;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 14px;
+  padding: 12px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 190px;
+  flex: 1;
+}
+
+.field.narrow {
+  flex: 0 0 auto;
+  min-width: 150px;
+}
+
+.field.slider {
+  max-width: 240px;
+}
+
+.field > span,
+.wave-legend {
+  font-size: 11.5px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Labels are uppercased, but their values are measurements and states —
+   "-37 DB", "180 MS", "BYPASSED" all read wrong in caps. */
+.field b {
+  color: var(--text);
+  font-weight: 600;
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+}
+
+select,
+input[type="text"],
+input[type="password"] {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 7px 9px;
+  width: 100%;
+}
+
+input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--muted);
+  padding-bottom: 7px;
+  cursor: pointer;
+}
+
+.toggle input {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+}
+
+.meter-field {
+  max-width: 260px;
+}
+
+.meter {
+  position: relative;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.meter-fill {
+  height: 100%;
+  width: 0;
+  background: var(--meter-track);
+  transition: width 45ms linear;
+}
+
+/* Green only while signal is actually reaching Discord. */
+.meter-fill.open {
+  background: var(--ok);
+}
+
+.meter-threshold {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--warn);
+}
+
+button.hotkey {
+  font-variant-numeric: tabular-nums;
+  min-height: 34px;
+}
+
+button.hotkey.recording {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0;
+  padding: 12px 20px;
+  background: var(--warn-bg);
+  border-bottom: 1px solid var(--warn-line);
+}
+
+.banner-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12.5px;
+}
+
+.banner-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.banner-body strong {
+  color: var(--warn);
+}
+
+.banner-body span {
+  color: var(--muted);
+}
+
+.banner button {
+  flex: 0 0 auto;
+}
+
+/* --- board ---------------------------------------------------------------- */
+
+.board {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 20px 28px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 12px;
+  align-content: start;
+}
+
+.pad {
+  position: relative;
+  --accent: var(--accent);
+}
+
+.pad-fire {
+  width: 100%;
+  height: 84px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: 6px;
+  text-align: left;
+  padding: 11px 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 9px;
+  transition: transform 60ms ease, background 120ms ease;
+}
+
+.pad-fire:hover {
+  background: var(--panel-2);
+}
+
+.pad-fire:active {
+  transform: scale(0.98);
+}
+
+.pad.playing .pad-fire {
+  background: color-mix(in srgb, var(--accent) 18%, var(--panel));
+  border-color: var(--accent);
+}
+
+.pad-name {
+  font-weight: 600;
+  font-size: 13.5px;
+  line-height: 1.3;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+}
+
+/* Sits over the pad rather than inside it, so binding a hotkey never risks
+   firing the clip. */
+.pad-key {
+  position: absolute;
+  left: 12px;
+  bottom: 9px;
+  padding: 1px 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pad-key:hover {
+  color: var(--text);
+  border-color: var(--line-hover);
+}
+
+.pad-key.recording {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Faint but legible when unbound: invisible-until-hover is how six clips ended
+   up with no hotkeys in the first place. */
+.pad-key.unset {
+  opacity: 0.45;
+}
+
+.pad:hover .pad-key.unset {
+  opacity: 1;
+}
+
+/* Same specificity as .unset and declared later, so recording actually shows. */
+.pad-key.unset.recording {
+  opacity: 1;
+}
+
+.pad-key.conflict {
+  color: var(--danger);
+  border-color: var(--danger-line);
+}
+
+.pad-edit {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 7px;
+  font-size: 13px;
+  line-height: 1.2;
+  color: var(--muted);
+  background: transparent;
+  border-color: transparent;
+  opacity: 0;
+}
+
+.pad:hover .pad-edit {
+  opacity: 1;
+}
+
+.empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--muted);
+  padding: 70px 20px;
+}
+
+.empty h2 {
+  font-size: 17px;
+  color: var(--text);
+  margin: 0 0 8px;
+}
+
+/* --- overlays ------------------------------------------------------------- */
+
+.drop-hint {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--overlay);
+  border: 2px dashed var(--accent);
+  font-size: 17px;
+  color: var(--accent);
+  pointer-events: none;
+  z-index: 20;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  max-width: min(760px, 90vw);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--danger);
+  border-radius: 8px;
+  padding: 10px 15px;
+  font-size: 13px;
+  z-index: 30;
+  box-shadow: 0 10px 30px var(--shadow);
+}
+
+/* --- editor --------------------------------------------------------------- */
+
+dialog {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0;
+  width: min(620px, 92vw);
+}
+
+dialog::backdrop {
+  background: var(--backdrop);
+}
+
+.editor-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+}
+
+.editor-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.editor-name {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.wave {
+  width: 100%;
+  height: 108px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.wave-legend {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: -10px;
+}
+
+/* The legend inherits the uppercase label treatment, but the trim readout is a
+   measurement — "2.10S" reads as a unit that doesn't exist. */
+#editor-trim {
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.editor-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* --- setup screen --------------------------------------------------------- */
+
+.setup {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 56px 28px;
+}
+
+.setup h1 {
+  font-size: 22px;
+  margin: 0 0 12px;
+}
+
+.setup-lead {
+  color: var(--muted);
+  margin: 0 0 26px;
+}
+
+.setup-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0 0 28px;
+  padding-left: 20px;
+}
+
+.setup-steps li strong {
+  display: block;
+  margin-bottom: 3px;
+}
+
+.setup-steps li span {
+  color: var(--muted);
+}
+
+.setup-actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* --- Discord RPC status ---------------------------------------------------- */
+
+.rpc-status-field {
+  min-width: 260px;
+}
+
+.rpc-status {
+  font-size: 12.5px;
+  color: var(--muted);
+  padding: 7px 9px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Green only while Discord is genuinely pointed at the cable. */
+.rpc-status.engaged {
+  color: var(--ok);
+  border-color: var(--ok-line);
+}
+
+.rpc-status.bad {
+  color: var(--danger);
+  border-color: var(--danger-line);
+}
+
+/* --- setup wizard ---------------------------------------------------------- */
+
+.wizard {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 44px 28px 60px;
+}
+
+.wizard-head h1 {
+  font-size: 22px;
+  margin: 0 0 8px;
+}
+
+.wizard-head p {
+  color: var(--muted);
+  margin: 0 0 26px;
+  font-size: 13px;
+}
+
+.wizard-steps {
+  list-style: none;
+  margin: 0 0 24px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wizard-step {
+  display: flex;
+  gap: 13px;
+  padding: 14px 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line);
+  border-radius: 9px;
+}
+
+.wizard-step.ok {
+  border-left-color: var(--ok);
+}
+
+.wizard-step.todo {
+  border-left-color: var(--warn);
+}
+
+.wizard-mark {
+  flex: 0 0 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--panel-2);
+  color: var(--muted);
+}
+
+.wizard-step.ok .wizard-mark {
+  background: var(--ok-glow);
+  color: var(--ok);
+}
+
+.wizard-step.todo .wizard-mark {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.wizard-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.wizard-body strong {
+  font-size: 13.5px;
+}
+
+.wizard-body span {
+  color: var(--muted);
+}
+
+/* The instructions, shown under the check result once a step still needs doing. */
+.wizard-how {
+  opacity: 0.85;
+}
+
+.wizard-action {
+  margin-top: 7px;
+  font-size: 12.5px;
+  padding: 5px 11px;
+}
+
+.wizard-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}

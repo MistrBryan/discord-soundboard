@@ -1,0 +1,51 @@
+{
+  "name": "discord-soundboard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Programmable soundboard that reaches Discord through a virtual audio cable.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "icons": "node tools/make-icons.mjs",
+    "dist": "electron-builder",
+    "smoke": "node tools/smoke.mjs"
+  },
+  "build": {
+    "appId": "com.bryanchan.discord-soundboard",
+    "productName": "Soundboard",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.mjs",
+      "index.html",
+      "styles.css",
+      "src/**/*",
+      "icons/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "icons/app.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Soundboard",
+      "uninstallDisplayName": "Soundboard"
+    }
+  },
+  "devDependencies": {
+    "electron": "^38.0.0",
+    "electron-builder": "^26.15.3"
+  },
+  "allowScripts": {
+    "electron@38.8.6": true,
+    "electron-winstaller@5.4.0": true
+  }
+}
