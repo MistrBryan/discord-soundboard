@@ -34,6 +34,12 @@ contextBridge.exposeInMainWorld("api", {
   rpcClipEnded: () => ipcRenderer.invoke("rpc:clip-ended"),
   onRpcState: (fn) => ipcRenderer.on("rpc:state", (_e, state) => fn(state)),
 
+  themesList: () => ipcRenderer.invoke("themes:list"),
+  themesPick: () => ipcRenderer.invoke("themes:pick"),
+  themesSave: (id, theme) => ipcRenderer.invoke("themes:save", id, theme),
+  themesDelete: (id) => ipcRenderer.invoke("themes:delete", id),
+  themesExport: (theme) => ipcRenderer.invoke("themes:export", theme),
+
   updateGetState: () => ipcRenderer.invoke("update:get-state"),
   updateCheck: () => ipcRenderer.invoke("update:check"),
   updateInstall: () => ipcRenderer.invoke("update:install"),

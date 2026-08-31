@@ -8,6 +8,7 @@ import { listDevices, findCable, suggestDefaults, checkRouting } from "./setup.j
 import { createWizard } from "./wizard.js";
 import { accelFromEvent, formatAccelerator } from "./hotkeys.js";
 import { createTrimEditor } from "./waveform.js";
+import { validateTheme, applyCustomTheme, exportCurrentTheme } from "./theme.js";
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -55,12 +56,102 @@ function percent(value) {
 // decide, so the window follows Windows switching itself light or dark live.
 const systemDark = window.matchMedia("(prefers-color-scheme: dark)");
 
+// Custom themes are stored by id and selected as "custom:<id>".
+let customThemes = new Map();
+
 function applyTheme(theme) {
+  if (theme?.startsWith("custom:")) {
+    const custom = customThemes.get(theme.slice(7));
+    if (custom) {
+      applyCustomTheme(custom);
+      trimEditor?.refresh();
+      return;
+    }
+    // The theme file was deleted or failed to load; fall back rather than
+    // leaving the user staring at whatever was on screen.
+    theme = "system";
+    library?.updateSettings({ theme });
+  }
+
+  applyCustomTheme(null);
   const resolved = theme === "system" ? (systemDark.matches ? "dark" : "light") : theme;
   document.documentElement.setAttribute("data-theme", resolved);
   // The waveform paints to a canvas, which can't inherit CSS variables, so it
   // has to be told to repaint whenever the palette changes.
   trimEditor?.refresh();
+}
+
+function renderThemeOptions() {
+  const select = $("#theme");
+  const current = library.settings.theme;
+  const builtIn = [
+    ["system", "Match Windows"],
+    ["dark", "Dark"],
+    ["light", "Light"],
+  ];
+
+  select.innerHTML = "";
+  for (const [value, label] of builtIn) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    select.append(option);
+  }
+  for (const [id, theme] of customThemes) {
+    const option = document.createElement("option");
+    option.value = `custom:${id}`;
+    option.textContent = theme.name;
+    select.append(option);
+  }
+
+  select.value = current;
+  // A stale selection (theme file deleted outside the app) falls back visibly.
+  if (!select.value) select.value = "system";
+  $("#theme-delete").hidden = !select.value.startsWith("custom:");
+}
+
+async function loadCustomThemes() {
+  customThemes = new Map();
+  const stored = await window.api.themesList();
+  for (const { id, raw } of stored) {
+    try {
+      const result = validateTheme(JSON.parse(raw));
+      if (result.ok) customThemes.set(id, result.theme);
+      else console.warn(`[theme] ${id} rejected:`, result.errors.join(" "));
+    } catch (err) {
+      console.warn(`[theme] ${id} is not valid JSON:`, err.message);
+    }
+  }
+}
+
+async function importTheme() {
+  const picked = await window.api.themesPick();
+  if (!picked) return;
+
+  let parsed;
+  try {
+    parsed = JSON.parse(picked.raw);
+  } catch {
+    toast("That file isn't valid JSON.");
+    return;
+  }
+
+  const result = validateTheme(parsed);
+  if (!result.ok) {
+    toast(`Theme rejected: ${result.errors.join(" ")}`, 9000);
+    return;
+  }
+
+  // Id from the name, so re-importing an edited theme replaces it instead of
+  // stacking up duplicates.
+  const id = result.theme.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "theme";
+  await window.api.themesSave(id, result.theme);
+  await loadCustomThemes();
+
+  library.updateSettings({ theme: `custom:${id}` });
+  renderThemeOptions();
+  applyTheme(`custom:${id}`);
+  toast(`Theme "${result.theme.name}" applied.`);
 }
 
 systemDark.addEventListener("change", () => {
@@ -646,6 +737,31 @@ function wireToolbar() {
   $("#theme").addEventListener("change", (event) => {
     library.updateSettings({ theme: event.target.value });
     applyTheme(event.target.value);
+    $("#theme-delete").hidden = !event.target.value.startsWith("custom:");
+  });
+
+  $("#theme-import").addEventListener("click", importTheme);
+
+  // Exporting the live palette is what makes custom themes usable at all —
+  // it hands you a complete, correct file to edit rather than a blank page.
+  $("#theme-export").addEventListener("click", async () => {
+    const current = library.settings.theme;
+    const name = current.startsWith("custom:")
+      ? customThemes.get(current.slice(7))?.name
+      : `Soundboard ${current}`;
+    const saved = await window.api.themesExport(exportCurrentTheme(name));
+    if (saved) toast("Theme exported. Edit the colours and import it back.");
+  });
+
+  $("#theme-delete").addEventListener("click", async () => {
+    const current = library.settings.theme;
+    if (!current.startsWith("custom:")) return;
+    await window.api.themesDelete(current.slice(7));
+    await loadCustomThemes();
+    library.updateSettings({ theme: "system" });
+    renderThemeOptions();
+    applyTheme("system");
+    toast("Theme deleted.");
   });
 
   $("#overlap-mode").addEventListener("change", (event) => {
@@ -785,7 +901,7 @@ function wireToolbar() {
 
 function paintSettings() {
   const settings = library.settings;
-  $("#theme").value = settings.theme;
+  renderThemeOptions();
   applyTheme(settings.theme);
   $("#overlap-mode").value = settings.overlapMode;
   $("#master-volume").value = settings.masterVolume;
@@ -824,6 +940,8 @@ async function boot() {
   await audio.unlockDeviceLabels();
 
   library = await Library.load();
+  // Must precede paintSettings, which builds the theme dropdown from this.
+  await loadCustomThemes();
   paintSettings();
 
   const fill = $("#meter-fill");

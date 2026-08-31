@@ -768,3 +768,17 @@ dialog::backdrop {
 .banner.update .banner-body strong {
   color: var(--accent);
 }
+
+.theme-buttons {
+  min-width: 0;
+}
+
+.theme-row {
+  display: flex;
+  gap: 6px;
+}
+
+.theme-row button {
+  padding: 7px 10px;
+  font-size: 12.5px;
+}

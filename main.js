@@ -76,6 +76,7 @@ let tray = null;
 let clipsDir = "";
 let libraryPath = "";
 let credentialsPath = "";
+let themesDir = "";
 
 const rpc = new RpcVoice();
 
@@ -94,7 +95,9 @@ async function ensureDirs() {
   clipsDir = path.join(userData, "clips");
   libraryPath = path.join(userData, "library.json");
   credentialsPath = path.join(userData, "rpc-credentials.json");
+  themesDir = path.join(userData, "themes");
   await fs.mkdir(clipsDir, { recursive: true });
+  await fs.mkdir(themesDir, { recursive: true });
 }
 
 // --- RPC credentials --------------------------------------------------------
@@ -384,6 +387,10 @@ function createWindow() {
 
         const ok = Boolean(result.app) !== Boolean(result.setup);
         console.log(`SELFCHECK ${ok ? "PASS" : "FAIL"} ${JSON.stringify(result)}`);
+        // Optional screenshot, for eyeballing a build without driving it by hand.
+        if (process.env.SOUNDBOARD_SHOT) {
+          await fs.writeFile(process.env.SOUNDBOARD_SHOT, (await win.webContents.capturePage()).toPNG());
+        }
         quitting = true;
         app.exit(ok ? 0 : 1);
       }, 5000)
@@ -554,6 +561,58 @@ ipcMain.handle("update:check", async () => {
     reportUpdate({ status: "error", error: String(err?.message ?? err) });
   }
   return updateState;
+});
+
+// Themes are user-supplied files. Main does the reading and writing; the
+// renderer validates, because that is where the token list lives.
+
+function themeFile(id) {
+  if (typeof id !== "string" || !/^[a-z0-9-]{1,60}$/.test(id)) throw new Error("bad theme id");
+  return path.join(themesDir, id + ".json");
+}
+
+ipcMain.handle("themes:list", async () => {
+  const names = await fs.readdir(themesDir).catch(() => []);
+  const out = [];
+  for (const file of names.filter((n) => n.endsWith(".json"))) {
+    try {
+      const text = await fs.readFile(path.join(themesDir, file), "utf8");
+      out.push({ id: file.replace(/.json$/, ""), raw: text.replace(/^﻿/, "") });
+    } catch {
+      // A single unreadable theme must not stop the rest loading.
+    }
+  }
+  return out;
+});
+
+ipcMain.handle("themes:pick", async () => {
+  const result = await dialog.showOpenDialog(win, {
+    title: "Import a theme",
+    properties: ["openFile"],
+    filters: [{ name: "Theme", extensions: ["json"] }],
+  });
+  if (result.canceled) return null;
+  const full = result.filePaths[0];
+  return { raw: (await fs.readFile(full, "utf8")).replace(/^﻿/, "") };
+});
+
+ipcMain.handle("themes:save", async (_e, id, theme) => {
+  await fs.writeFile(themeFile(id), JSON.stringify(theme, null, 2), "utf8");
+});
+
+ipcMain.handle("themes:delete", async (_e, id) => {
+  await fs.unlink(themeFile(id)).catch(() => {});
+});
+
+ipcMain.handle("themes:export", async (_e, theme) => {
+  const result = await dialog.showSaveDialog(win, {
+    title: "Export theme",
+    defaultPath: (theme.name || "theme").replace(/[^a-z0-9-_ ]/gi, "") + ".json",
+    filters: [{ name: "Theme", extensions: ["json"] }],
+  });
+  if (result.canceled) return false;
+  await fs.writeFile(result.filePath, JSON.stringify(theme, null, 2), "utf8");
+  return true;
 });
 
 ipcMain.handle("app:report-state", (_e, state) => {

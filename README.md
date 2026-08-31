@@ -162,7 +162,34 @@ never written at all.
 presses doesn't restart Discord's capture pipeline each time. Clips fired inside that window
 play with no switching delay.
 
-**Theme** — dark, light, or match Windows.
+**Theme** — dark, light, match Windows, or your own.
+
+Press **Export** to save the palette you are currently looking at as a `.json` file, edit the
+colours, and **Import** it back. That is the intended way to make one: you start from a
+complete, correct file rather than a blank page. Imported themes appear in the dropdown and
+live in `%APPDATA%\discord-soundboard\themes`, so they are single files you can send to
+someone else.
+
+A theme is a map of colour tokens, not a stylesheet — deliberately. Themes get passed between
+people, and an uploaded `.css` in a desktop app can call home through `url()`, leaking the
+viewer's IP the moment it renders, and can restyle the window into impersonating a dialog it
+isn't. Neither is expressible here: every value is matched against a strict colour pattern
+before it is applied, unknown keys are ignored so older themes keep working, and anything a
+theme omits falls back to its `base` palette — so overriding just the accent colour is a valid
+three-line theme.
+
+```jsonc
+{
+  "name": "Nord",
+  "base": "dark",              // what unlisted tokens fall back to
+  "colors": { "accent": "#88c0d0", "bg": "#2e3440" }
+}
+```
+
+Full token list: `bg`, `panel`, `panel-2`, `line`, `line-hover`, `text`, `muted`, `accent`,
+`on-accent`, `danger`, `danger-line`, `danger-bg`, `danger-glow`, `ok`, `ok-glow`, `ok-line`,
+`warn`, `warn-bg`, `warn-line`, `meter-track`, `wave`, `wave-dim`, `overlay`, `backdrop`,
+`shadow`.
 
 **Layering is safe.** Clips sum, and unmanaged that overshoots full scale — three at once
 measured 1.32 where 1.0 is the ceiling, heard as static and as a drop in level. A limiter on
@@ -263,6 +290,7 @@ file like a password.
 | `src/rpc-voice.mjs` | Discord RPC client over the named pipe; baseline diff and restore |
 | `src/app.js` | UI shell, device pickers, board, import |
 | `src/library.js` | Clip model and debounced persistence |
+| `src/theme.js` | Theme tokens, validation of imported themes, palette application |
 | `src/waveform.js` | Peak rendering and the drag-to-trim editor |
 | `src/hotkeys.js` | KeyboardEvent → Electron accelerator |
 | `src/setup.js` | VB-CABLE detection and the four-way routing check |

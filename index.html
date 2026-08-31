@@ -42,12 +42,19 @@
         </label>
         <label class="field narrow">
           <span>Theme</span>
-          <select id="theme">
-            <option value="system">Match Windows</option>
-            <option value="dark">Dark</option>
-            <option value="light">Light</option>
-          </select>
+          <select id="theme"></select>
         </label>
+        <div class="field narrow theme-buttons">
+          <span>&nbsp;</span>
+          <div class="theme-row">
+            <button id="theme-import" class="ghost" type="button" title="Import a theme file">Import</button>
+            <button id="theme-export" class="ghost" type="button" title="Save the current palette as a theme file">Export</button>
+            <button id="theme-delete" class="ghost" type="button" title="Delete the selected custom theme" hidden>Delete</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="toolbar">
         <label class="field narrow">
           <span>Overlap</span>
           <select id="overlap-mode">
@@ -56,9 +63,6 @@
             <option value="choke">Cut off others</option>
           </select>
         </label>
-      </section>
-
-      <section class="toolbar">
         <label class="field slider">
           <span>Clip volume <b id="master-volume-value"></b></span>
           <input id="master-volume" type="range" min="0" max="2" step="0.01" />
