@@ -45,7 +45,8 @@
       {
         "provider": "github",
         "owner": "MistrBryan",
-        "repo": "discord-soundboard"
+        "repo": "discord-soundboard",
+        "releaseType": "release"
       }
     ],
     "artifactName": "${productName}-Setup-${version}.${ext}"
