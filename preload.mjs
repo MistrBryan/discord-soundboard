@@ -20,6 +20,19 @@ contextBridge.exposeInMainWorld("api", {
   openExternal: (url) => ipcRenderer.invoke("shell:open-external", url),
   openSoundSettings: () => ipcRenderer.invoke("shell:open-sound-settings"),
 
+  // Sets Windows' default devices back to the named real hardware, clearing the
+  // cable off every default role. Returns { ok, results }.
+  fixAudioDefaults: (outputLabel, inputLabel) =>
+    ipcRenderer.invoke("audio:fix-defaults", { outputLabel, inputLabel }),
+  listAudioEndpoints: () => ipcRenderer.invoke("audio:list"),
+
+  // Sets both cable halves to 48000 Hz; reads back the current rates.
+  setCableSampleRate: () => ipcRenderer.invoke("audio:set-cable-rate"),
+  getCableSampleRate: () => ipcRenderer.invoke("audio:get-cable-rate"),
+
+  // Opens a picker for the downloaded VB-CABLE zip/exe and launches it elevated.
+  installCable: () => ipcRenderer.invoke("audio:install-cable"),
+
   // Keeps the tray icon and tooltip honest while the window is hidden.
   reportState: (state) => ipcRenderer.invoke("app:report-state", state),
   setLoginItem: (enabled) => ipcRenderer.invoke("app:set-login-item", enabled),

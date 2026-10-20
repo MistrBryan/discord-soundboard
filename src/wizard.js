@@ -16,7 +16,8 @@ const CABLE_CAPTURE_PATTERN = /^CABLE Output/i;
 /**
  * @param container  element to render into
  * @param deps  { getDevices, refreshDevices, getLibrary, getRpcState, connectRpc,
- *                openSoundSettings, openExternal, onFinish, onAddSounds }
+ *                openSoundSettings, openExternal, fixRouting, fixCableRate,
+ *                getCableRates, installCable, onFinish, onAddSounds }
  */
 export function createWizard(container, deps) {
   const steps = buildSteps(deps);
@@ -92,13 +93,14 @@ export function createWizard(container, deps) {
         body.append(how);
       }
 
-      if (step.action) {
+      for (const action of [step.action, step.action2]) {
+        if (!action) continue;
         const button = document.createElement("button");
         button.type = "button";
         button.className = "ghost wizard-action";
-        button.textContent = step.action.label;
+        button.textContent = action.label;
         button.addEventListener("click", async () => {
-          await step.action.run();
+          await action.run();
           await runChecks();
         });
         body.append(button);
@@ -119,8 +121,9 @@ function buildSteps(deps) {
   return [
     {
       title: "Install VB-CABLE",
-      body: "Download it, run the installer as administrator, then reboot. It creates the virtual audio device this app writes into.",
+      body: "Download the zip, then click “Install from file” and pick it — the app runs the right installer for you (you'll get a UAC prompt and Windows' driver prompt). Reboot afterwards. It creates the virtual audio device this app writes into.",
       action: { label: "Open the download page", run: async () => deps.openExternal(CABLE_URL) },
+      action2: { label: "Install from file", run: async () => deps.installCable?.() },
       async check() {
         await deps.refreshDevices();
         const cable = findCable(deps.getDevices().outputs);
@@ -132,9 +135,27 @@ function buildSteps(deps) {
 
     {
       title: "Set both halves of the cable to 48000 Hz",
-      body: "Sound control panel → Playback → CABLE Input → Properties → Advanced → 48000 Hz. Repeat under Recording for CABLE Output.",
-      action: { label: "Open Sound settings", run: async () => deps.openSoundSettings() },
+      body: "“Fix automatically” sets both halves. Or by hand: Sound control panel → Playback → CABLE Input → Properties → Advanced → 48000 Hz, then the same under Recording for CABLE Output.",
+      action: { label: "Fix automatically", run: async () => deps.fixCableRate?.() },
       async check() {
+        // On Windows the helper reads the stored default format directly — the
+        // same value "Fix automatically" sets. It is authoritative and, unlike
+        // the probe below, does not depend on being able to open the device to
+        // measure a live stream.
+        if (deps.getCableRates) {
+          const r = await deps.getCableRates();
+          if (r?.cableInput?.ok && r?.cableOutput?.ok) {
+            const near = (hz) => Math.abs(hz - audio.SAMPLE_RATE) <= 1;
+            const wrong = [];
+            if (!near(r.cableInput.rate)) wrong.push(`CABLE Input is ${r.cableInput.rate} Hz`);
+            if (!near(r.cableOutput.rate)) wrong.push(`CABLE Output is ${r.cableOutput.rate} Hz`);
+            return wrong.length
+              ? { ok: false, detail: `${wrong.join(", ")} — clips will play back pitch-shifted.` }
+              : { ok: true, detail: "Both halves at 48000 Hz." };
+          }
+        }
+
+        // Fallback: non-Windows, or the helper could not read the format.
         const { outputs, inputs } = deps.getDevices();
         const out = findCable(outputs);
         const cap = inputs.find((d) => CABLE_CAPTURE_PATTERN.test(d.label));
@@ -164,8 +185,8 @@ function buildSteps(deps) {
 
     {
       title: "Take the cable off Windows' default devices",
-      body: "Set your real headphones and microphone as both the Default Device and the Default Communication Device. Windows keeps those two separately.",
-      action: { label: "Open Sound settings", run: async () => deps.openSoundSettings() },
+      body: "Set your real headphones and microphone as both the Default Device and the Default Communication Device. “Fix automatically” does this for you; or open Sound settings to do it by hand.",
+      action: { label: "Fix automatically", run: async () => deps.fixRouting?.() },
       async check() {
         const problems = checkRouting(deps.getDevices());
         return problems.length === 0

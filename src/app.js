@@ -250,6 +250,46 @@ async function refreshDevices() {
   await reconfigure();
 }
 
+// --- fix Windows defaults ---------------------------------------------------
+//
+// The target for "default playback" is the user's own output (their monitor
+// device) and for "default recording" their real mic — never the cable, never
+// Chromium's synthetic "Default - …"/"Communications - …" entries, which carry
+// a deviceId of "default"/"communications" and a label that matches no real
+// endpoint. Prefer the device the user already chose when it is concrete.
+function concreteLabel(list, preferLabel) {
+  const synthetic = (id) => id === "default" || id === "communications";
+  const usable = (d) => d.label && !synthetic(d.deviceId) && !/vb-audio/i.test(d.label);
+  return list.find((d) => d.label === preferLabel && usable(d))?.label ?? list.find(usable)?.label ?? null;
+}
+
+function realDeviceTargets() {
+  return {
+    outputLabel: concreteLabel(devices.outputs, library.settings.monitorDeviceLabel),
+    inputLabel: concreteLabel(devices.inputs, library.settings.micDeviceLabel),
+  };
+}
+
+// Just the system change; no UI. Shared by the banner button and the wizard so
+// the wizard can re-run its own checks afterwards without the full app refresh.
+async function fixAudioDefaultsCore() {
+  const targets = realDeviceTargets();
+  if (!targets.outputLabel && !targets.inputLabel) return { ok: false, error: "no-target" };
+  return window.api.fixAudioDefaults(targets.outputLabel, targets.inputLabel);
+}
+
+async function fixRouting() {
+  const res = await fixAudioDefaultsCore();
+  if (res?.error === "no-target") {
+    toast("No non-cable device to switch to — set it in Sound settings.");
+    return;
+  }
+  // Re-enumerate so the banner reflects the new defaults (refreshDevices runs
+  // renderRoutingWarning). Chromium reports the change on the next query.
+  await refreshDevices();
+  toast(res?.ok ? "Windows defaults set to your real devices." : "Couldn't set every default — try Sound settings.");
+}
+
 // --- updates ----------------------------------------------------------------
 
 // Only "ready" is worth interrupting for, and even then it is an offer rather
@@ -282,6 +322,19 @@ function showWizard() {
     getRpcState: () => rpcState,
     openSoundSettings: () => window.api.openSoundSettings(),
     openExternal: (url) => window.api.openExternal(url),
+    // Fix defaults, then re-enumerate so the wizard's own re-check sees the new
+    // state. Deliberately not the app's refreshDevices, which would re-enter the
+    // wizard while setupComplete is still false.
+    fixRouting: async () => {
+      await fixAudioDefaultsCore();
+      devices = await listDevices();
+    },
+    // Phase 2: set both cable halves to 48 kHz. No device re-enumeration needed;
+    // the step's own check reads the stored rate back via getCableRates.
+    fixCableRate: () => window.api.setCableSampleRate(),
+    getCableRates: () => window.api.getCableSampleRate(),
+    // Phase 3: launch the VB-CABLE installer the user downloaded.
+    installCable: () => window.api.installCable(),
     onAddSounds: () => addSounds(),
     onFinish: async () => {
       library.updateSettings({ setupComplete: true });
@@ -823,6 +876,7 @@ function wireToolbar() {
   $("#add-sounds").addEventListener("click", addSounds);
   $("#open-wizard").addEventListener("click", showWizard);
 
+  $("#routing-fix-auto").addEventListener("click", fixRouting);
   $("#routing-fix").addEventListener("click", () => window.api.openSoundSettings());
   $("#update-install").addEventListener("click", () => window.api.updateInstall());
 

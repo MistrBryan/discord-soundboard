@@ -13,7 +13,12 @@ import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, safeStorage,
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import fs from "node:fs/promises";
+import os from "node:os";
 import crypto from "node:crypto";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileP = promisify(execFile);
 import electronUpdater from "electron-updater";
 import { RpcVoice } from "./src/rpc-voice.mjs";
 
@@ -77,6 +82,7 @@ let clipsDir = "";
 let libraryPath = "";
 let credentialsPath = "";
 let themesDir = "";
+let audioScriptPath = "";
 
 const rpc = new RpcVoice();
 
@@ -98,6 +104,143 @@ async function ensureDirs() {
   themesDir = path.join(userData, "themes");
   await fs.mkdir(clipsDir, { recursive: true });
   await fs.mkdir(themesDir, { recursive: true });
+}
+
+// --- Windows audio defaults -------------------------------------------------
+//
+// VB-CABLE's installer makes the cable Windows' default device, which is what
+// causes "all my audio goes into Discord". Undoing that by hand means a trip
+// through the Sound control panel. src/win-audio.ps1 does it in one call via
+// IPolicyConfig — the same COM interface the Sound panel uses — in the user's
+// own context, no elevation, no driver install, no registry or format writes.
+//
+// PowerShell cannot run a script from inside app.asar, so the bundled copy is
+// staged to a real file in userData on every launch (cheap, and keeps it fresh
+// across updates). fs reads the source transparently through the asar.
+async function ensureAudioScript() {
+  if (process.platform !== "win32") return;
+  try {
+    const text = await fs.readFile(path.join(HERE, "src", "win-audio.ps1"), "utf8");
+    const dest = path.join(app.getPath("userData"), "win-audio.ps1");
+    await fs.writeFile(dest, text, "utf8");
+    audioScriptPath = dest;
+  } catch (err) {
+    console.error("[soundboard] could not stage win-audio.ps1:", err.message);
+    audioScriptPath = "";
+  }
+}
+
+// Runs the helper and parses its single JSON line. Never rejects: a failed
+// audio fix is a reported outcome, not a crash.
+function runAudioScript(args) {
+  return new Promise((resolve) => {
+    if (!audioScriptPath) return resolve({ ok: false, error: "audio helper unavailable" });
+    execFile(
+      "powershell.exe",
+      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", audioScriptPath, ...args],
+      // The first run compiles the inline C#, which can take a few seconds.
+      { timeout: 25000, windowsHide: true },
+      (err, stdout) => {
+        if (err) return resolve({ ok: false, error: err.message });
+        try {
+          resolve(JSON.parse(String(stdout).trim() || "{}"));
+        } catch {
+          resolve({ ok: false, error: "unreadable audio helper output" });
+        }
+      }
+    );
+  });
+}
+
+// A device name reaches the script only as a base64 match string it compares
+// against enumerated endpoints; it is never executed, so no name — however
+// punctuated — can inject. The script path is our own staged file.
+async function setDefaultDevice(flow, label) {
+  const b64 = Buffer.from(String(label ?? ""), "utf8").toString("base64");
+  const res = await runAudioScript(["-Action", "setdefault", "-Flow", flow, "-MatchB64", b64]);
+  return { flow, label, ...res };
+}
+
+// --- VB-CABLE install -------------------------------------------------------
+//
+// The app never downloads or bundles the driver — VB-CABLE's licence forbids
+// repackaging it, and installing a signed kernel driver is the user's call.
+// What this does is remove the fiddly middle: take the .zip the user downloaded
+// (or the extracted .exe), find the right installer, and launch it elevated.
+// The installer then shows its own "Install Driver" button and Windows' own
+// driver-signature prompt; a reboot is still required afterwards.
+
+// Only ever the two real VB-CABLE installer names are launched.
+const CABLE_INSTALLER = /^VBCABLE_Setup(_x64)?\.exe$/i;
+
+// PowerShell single-quoted literal: wrap and double any embedded quote. Used so
+// a path with spaces or punctuation cannot break out of the -Command string.
+function psLiteral(s) {
+  return "'" + String(s).replace(/'/g, "''") + "'";
+}
+
+// Extract a VB-CABLE zip into a fresh empty temp dir and return the installer
+// inside it. The archive is untrusted, so it goes in its own directory and only
+// a file with the exact installer name, sitting directly in that directory, is
+// ever returned — never anything the archive's own paths could point elsewhere.
+async function extractCableInstaller(zipPath) {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "vbcable-"));
+  await execFileP(
+    "powershell.exe",
+    ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+      `Expand-Archive -LiteralPath ${psLiteral(zipPath)} -DestinationPath ${psLiteral(dir)} -Force`],
+    { timeout: 60000, windowsHide: true }
+  );
+  const entries = await fs.readdir(dir);
+  for (const name of ["VBCABLE_Setup_x64.exe", "VBCABLE_Setup.exe"]) {
+    const hit = entries.find((e) => e.toLowerCase() === name.toLowerCase());
+    if (!hit) continue;
+    const full = path.join(dir, hit);
+    if (path.dirname(full) !== dir) throw new Error("unexpected archive layout");
+    return full;
+  }
+  throw new Error("No VBCABLE_Setup_x64.exe was found in that zip.");
+}
+
+async function installCable() {
+  if (process.platform !== "win32") return { ok: false, error: "Windows only" };
+
+  const result = await dialog.showOpenDialog(win, {
+    title: "Select the VB-CABLE installer or its .zip",
+    defaultPath: app.getPath("downloads"),
+    properties: ["openFile"],
+    filters: [{ name: "VB-CABLE installer", extensions: ["zip", "exe"] }],
+  });
+  if (result.canceled || !result.filePaths[0]) return { ok: false, canceled: true };
+
+  let exePath;
+  try {
+    exePath = result.filePaths[0].toLowerCase().endsWith(".zip")
+      ? await extractCableInstaller(result.filePaths[0])
+      : result.filePaths[0];
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+
+  const base = path.basename(exePath);
+  if (!CABLE_INSTALLER.test(base)) {
+    return { ok: false, error: `That doesn't look like the VB-CABLE installer (${base}).` };
+  }
+
+  // Launch elevated. The installer self-elevates too, but RunAs guarantees the
+  // UAC prompt rather than depending on the exe's manifest. A declined prompt
+  // makes Start-Process throw, which surfaces as a clean "cancelled".
+  try {
+    await execFileP(
+      "powershell.exe",
+      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+        `Start-Process -FilePath ${psLiteral(exePath)} -Verb RunAs`],
+      { timeout: 120000, windowsHide: true }
+    );
+    return { ok: true, installerName: base };
+  } catch {
+    return { ok: false, error: "The installer was cancelled or blocked." };
+  }
 }
 
 // --- RPC credentials --------------------------------------------------------
@@ -494,6 +637,7 @@ if (!app.requestSingleInstanceLock()) {
 
 app.whenReady().then(async () => {
   await ensureDirs();
+  await ensureAudioScript();
 
   // The renderer is our own local page, so grant it the media permission it
   // needs for getUserMedia and for real device labels. Everything else is
@@ -724,3 +868,48 @@ ipcMain.handle("shell:open-sound-settings", async () => {
 });
 
 ipcMain.handle("shell:open-external", (_e, url) => openExternalUrl(url));
+
+// Set Windows' default playback/recording devices back to the user's real
+// hardware, taking the cable off every default role. Driven by an explicit
+// button, never on launch: it is a real system-wide change and stays the
+// user's call.
+ipcMain.handle("audio:fix-defaults", async (_e, { outputLabel, inputLabel } = {}) => {
+  if (process.platform !== "win32") return { ok: false, error: "Windows only" };
+  const results = [];
+  if (outputLabel) results.push(await setDefaultDevice("render", outputLabel));
+  if (inputLabel) results.push(await setDefaultDevice("capture", inputLabel));
+  return { ok: results.length > 0 && results.every((r) => r.ok), results };
+});
+
+// Read-only enumeration, for diagnostics.
+ipcMain.handle("audio:list", () => runAudioScript(["-Action", "list"]));
+
+// Launch the VB-CABLE installer the user downloaded (zip or exe), elevated.
+ipcMain.handle("audio:install-cable", () => installCable());
+
+// Set both halves of the cable to 48000 Hz — the rate the whole app is pinned
+// to; a mismatch plays every clip pitch-shifted. Like the default-device fix
+// this goes through IPolicyConfig (SetDeviceFormat) and needs no elevation. The
+// two halves are the render device "CABLE Input" and the capture device "CABLE
+// Output", matched by name; VB-CABLE does not localise them.
+function cableRateArgs(action, flow, name) {
+  const b64 = Buffer.from(name, "utf8").toString("base64");
+  return [action, "-Flow", flow, "-MatchB64", b64];
+}
+
+ipcMain.handle("audio:set-cable-rate", async () => {
+  if (process.platform !== "win32") return { ok: false, error: "Windows only" };
+  const results = [
+    { half: "input", ...(await runAudioScript(["-Action", ...cableRateArgs("setrate", "render", "CABLE Input"), "-Rate", "48000"])) },
+    { half: "output", ...(await runAudioScript(["-Action", ...cableRateArgs("setrate", "capture", "CABLE Output"), "-Rate", "48000"])) },
+  ];
+  return { ok: results.every((r) => r.ok), results };
+});
+
+ipcMain.handle("audio:get-cable-rate", async () => {
+  if (process.platform !== "win32") return {};
+  return {
+    cableInput: await runAudioScript(["-Action", ...cableRateArgs("getrate", "render", "CABLE Input")]),
+    cableOutput: await runAudioScript(["-Action", ...cableRateArgs("getrate", "capture", "CABLE Output")]),
+  };
+});

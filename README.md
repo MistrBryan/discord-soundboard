@@ -58,12 +58,22 @@ Choose **More info → Run anyway**. That warning means *unknown publisher*, not
 
 ### 2. Install VB-CABLE
 
-Download from <https://vb-audio.com/Cable/index.htm>, run the installer **as administrator**,
-then reboot. The app detects whether it is present and shows a checklist if not.
+Download the zip from <https://vb-audio.com/Cable/index.htm>. Then in the wizard, click
+**Install from file** and pick the zip you downloaded — the app unpacks it, runs the right
+installer (VB-CABLE's own window appears; accept the UAC and driver prompts), and you **reboot**
+afterwards. The app never bundles or downloads the driver itself — VB-CABLE's licence doesn't
+allow redistributing it, and a signed kernel driver is yours to install.
+
+You can also just run `VBCABLE_Setup_x64.exe` by hand. Either way, the app detects whether the
+cable is present and shows a checklist if not.
 
 ### 3. Set both halves to 48000 Hz
 
-Run `control mmsys.cpl`.
+**The quick way:** on this step in the wizard, click **Fix automatically** — it sets both cable
+halves to 48000 Hz for you, no admin prompt. It changes only the sample rate, leaving your
+channel count and bit depth untouched.
+
+To do it by hand instead, run `control mmsys.cpl`:
 
 - **Playback** tab → `CABLE Input` → Properties → Advanced → **48000 Hz**
 - **Recording** tab → `CABLE Output` → Properties → Advanced → **48000 Hz**
@@ -76,7 +86,13 @@ Mismatched sample rates make every clip play back pitch-shifted.
 playback device, which sends *every program on the machine* into the cable — Discord then
 broadcasts your music, browser, and games.
 
-Still in `control mmsys.cpl`:
+**The quick way:** click **Fix automatically** — in the wizard on this step, or on the warning
+banner later. The app sets Windows' default playback and recording back to your real headphones
+and microphone (all three default roles), with no admin prompt. It never installs drivers or
+changes any volumes or formats; it only reassigns default devices, exactly what you'd do by
+hand below, and you can undo it from the Sound panel like any manual change.
+
+To do it by hand instead, still in `control mmsys.cpl`:
 
 - **Playback** tab → your real headphones → **Set Default**, and again as **Default
   Communication Device** (the arrow beside the button)
@@ -203,8 +219,8 @@ the number you are layering.
 
 | Symptom | Cause |
 |---|---|
-| Discord broadcasts music, browser, games | `CABLE Input` is still a Windows default. See step 4, and check the **Default Communication Device** separately. |
-| Clips sound pitch-shifted | A device is not at 48000 Hz. See step 3. |
+| Discord broadcasts music, browser, games | `CABLE Input` is still a Windows default. Click **Fix automatically** on the banner, or see step 4 and check the **Default Communication Device** separately. |
+| Clips sound pitch-shifted | A cable half is not at 48000 Hz. Open the wizard and click **Fix automatically** on step 3, or set it by hand. |
 | Clip plays about a second then goes silent | Discord's Krisp or echo cancellation. Set up step 6, or disable them by hand. |
 | Nobody hears the clips | Discord's input isn't `CABLE Output`, or the app's output isn't `CABLE Input`. |
 | Static when several clips play at once | Should be handled by the limiter — if not, lower the per-clip volumes. |
@@ -294,6 +310,7 @@ file like a password.
 | `src/waveform.js` | Peak rendering and the drag-to-trim editor |
 | `src/hotkeys.js` | KeyboardEvent → Electron accelerator |
 | `src/setup.js` | VB-CABLE detection and the four-way routing check |
+| `src/win-audio.ps1` | Windows-only helper: default-device reassignment and 48 kHz cable format, via IPolicyConfig (no admin) |
 | `src/wizard.js` | First-run setup wizard; every step self-verifies |
 | `tools/make-icons.mjs` | Generates the icons |
 | `tools/smoke.mjs` | Post-build check that the UI actually rendered |
